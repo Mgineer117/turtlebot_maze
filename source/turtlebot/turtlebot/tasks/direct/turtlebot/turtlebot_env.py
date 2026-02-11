@@ -205,15 +205,25 @@ class TurtlebotEnv(DirectRLEnv):
         return {"policy": obs}
 
     def _get_rewards(self) -> torch.Tensor:
+        # 1. Distance Penalty: Always non-positive
         dist_error = torch.norm(self.goals - self.robot.data.root_pos_w[:, :2], dim=-1)
+
+        # 2. Backward Movement Penalty: Always non-positive
         v_lin = self.actions[:, 1]
         rew_backwards = torch.where(
             v_lin < 0, torch.square(v_lin), torch.zeros_like(v_lin)
         )
+
+        # 3. Death Penalty: Applied only when a terminal condition (flip/collision) is met
+        # self.reset_terminated is True (1.0) when the robot flips or crashes
+        # We apply a large negative constant (e.g., -10.0) upon "death"
+        death_penalty = self.cfg.rew_scale_terminated * self.reset_terminated.float()
+
+        # Total reward is now strictly in (-inf, 0]
         return (
-            -1.0 * dist_error
-            - 2.0 * rew_backwards
-            + self.cfg.rew_scale_alive * (1.0 - self.reset_terminated.float())
+            self.cfg.rew_scale_distance * dist_error
+            + self.cfg.rew_scale_backward * rew_backwards
+            + death_penalty
         )
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:

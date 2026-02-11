@@ -111,7 +111,9 @@ class TurtlebotEnvCfg(DirectRLEnvCfg):
     action_scale = 1.0  # Torque [N*m]
     # - reward scales
     rew_scale_alive = 10.0
-    # rew_scale_terminated = -2.0
+    rew_scale_terminated = -10.0
+    rew_scale_backward = -2.0
+    rew_scale_distance = -1.0
     # rew_scale_tail_pos = -1.0
     # rew_scale_pole_pos = -1.0
     # rew_scale_tail_vel = -0.005
