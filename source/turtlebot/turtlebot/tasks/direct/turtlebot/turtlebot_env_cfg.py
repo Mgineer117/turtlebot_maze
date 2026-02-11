@@ -17,52 +17,45 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 TURTLEBOT_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
-        # usd_path=f"{ISAACLAB_NUCLEUS_DIR}/Robots/Classic/Cartpole/cartpole.usd",
         usd_path=f"{CURRENT_DIR}/turtlebot.usd",
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
-            # Master switch to enable physics for this body
             rigid_body_enabled=True,
-            # High safety cap for linear speed to prevent simulation crashes from extreme forces
             max_linear_velocity=1000.0,
-            # High safety cap for rotation speed; helps keep simulation stable during collisions
             max_angular_velocity=1000.0,
-            # Velocity limit for "popping" objects apart when they overlap; 100.0 is quite aggressive
-            max_depenetration_velocity=100.0,
-            # Accounts for the effect of rotating masses (important for your Turtlebot's spinning wheels)
+            max_depenetration_velocity=10.0,  # Reduced from 100.0 to prevent "explosive" wall collisions
             enable_gyroscopic_forces=True,
         ),
-        # articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-        #     # Prevents parts of the same robot (like wheels and chassis) from colliding with each other
-        #     enabled_self_collisions=False,
-        #     # Number of position constraint solver passes; 4 is standard for stability
-        #     solver_position_iteration_count=4,
-        #     # WARNING: 0 may cause zero-friction/sliding behavior; set to at least 1 for velocity control
-        #     solver_velocity_iteration_count=1,
-        #     # Velocity below which the articulation goes to "sleep" to save CPU; 0.0 disables sleeping
-        #     sleep_threshold=0.005,
-        #     # Threshold for the solver to stop calculating movement for a steady body
-        #     stabilization_threshold=0.001,
-        # ),
-    ),
-    # init_state=ArticulationCfg.InitialStateCfg(
-    #     pos=(0.0, 0.0, 2.0),
-    #     joint_pos={
-    #         "a__namespace_wheel_left_joint": 0.0,
-    #         "a__namespace_wheel_right_joint": 0.0,
-    #     },
-    # ),
-    actuators={
-        "left_wheel": ImplicitActuatorCfg(
-            joint_names_expr=["a__namespace_wheel_left_joint"],
-            effort_limit_sim=400.0,
-            stiffness=0.0,
-            damping=10.0,
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            # Standard for small robots to prevent self-clipping errors
+            enabled_self_collisions=False,
+            # Increased to 8 for better contact stability against maze walls
+            solver_position_iteration_count=8,
+            # Updated to 1 (per the warning) to ensure accurate velocity updates for PPO
+            solver_velocity_iteration_count=1,
+            sleep_threshold=0.005,
+            stabilization_threshold=0.001,
         ),
-        "right_wheel": ImplicitActuatorCfg(
-            joint_names_expr=["a__namespace_wheel_right_joint"],
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        pos=(
+            0.0,
+            0.0,
+            0.03,
+        ),  # Ensure it spawns slightly above ground to avoid initial clipping
+        joint_pos={
+            "a__namespace_wheel_left_joint": 0.0,
+            "a__namespace_wheel_right_joint": 0.0,
+        },
+    ),
+    actuators={
+        "wheels": ImplicitActuatorCfg(
+            # Combined into one expression for cleaner config
+            joint_names_expr=["a__namespace_wheel_.*_joint"],
+            # High effort for responsive acceleration in the maze
             effort_limit_sim=400.0,
             stiffness=0.0,
-            damping=10.0,
+            # Damping prevents the wheels from spinning out of control during resets
+            damping=5.0,
         ),
     },
 )

@@ -140,49 +140,45 @@ class TurtlebotEnv(DirectRLEnv):
         wall_cfg.func(prim_path, wall_cfg, translation=translation, scale=scale)
 
     def _visualize_markers(self):
-        """Update spheres and arrows."""
-        # --- 1. Data Preparation ---
+        """Update spheres and arrows with strict shape enforcement."""
+        # 1. Gather Data
         root_pos = self.robot.data.root_pos_w
         root_quat = self.robot.data.root_quat_w
+        num_envs = self.num_envs
 
-        # Convert 2D goals to 3D positions (z=0)
+        # 2. Goal Sphere Logic
+        # Convert 2D goals to 3D and apply offset
         goal_pos_3d = torch.cat(
-            [self.goals, torch.zeros(self.num_envs, 1, device=self.device)], dim=1
+            [self.goals, torch.zeros(num_envs, 1, device=self.device)], dim=1
+        )
+        sphere_locs = goal_pos_3d + self.sphere_offset
+
+        # Identity rotation for spheres (N, 4)
+        identity_quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device).repeat(
+            num_envs, 1
         )
 
-        # Calculate Goal Heading Arrow orientation
+        # 3. Arrow Logic
+        # Heading Arrow (Cyan) orientation is root_quat
+        # Goal Arrow (Red) orientation calculation:
         to_goal = self.goals - root_pos[:, :2]
         target_yaw = torch.atan2(to_goal[:, 1], to_goal[:, 0])
         goal_arrow_quat = math_utils.quat_from_angle_axis(
             target_yaw.view(-1, 1), self.up_dir
         ).view(-1, 4)
 
-        # --- 2. Position Calculations ---
-        # Spheres at goal locations (+ slight Z offset)
-        sphere_locs = goal_pos_3d + self.sphere_offset
-
-        # Arrows above robots (+ Z offset)
+        # Arrow positions (above robot)
         arrow_locs_base = root_pos + self.arrow_offset
-        # Stack for Cyan(forward) and Red(goal_dir) arrows
-        arrow_locs = torch.cat([arrow_locs_base, arrow_locs_base], dim=0)
 
-        # Combine all locations: [Spheres, Cyan Arrows, Red Arrows]
-        all_locs = torch.cat([sphere_locs, arrow_locs], dim=0)
+        # 4. Final Stacking (Ensure Order: 0=Sphere, 1=Forward, 2=GoalDir)
+        # Locations: [N, 3] + [N, 3] + [N, 3] -> [3N, 3]
+        all_locs = torch.cat([sphere_locs, arrow_locs_base, arrow_locs_base], dim=0)
 
-        # --- 3. Rotation Calculations ---
-        # Spheres need identity rotation
-        identity_quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device).repeat(
-            self.num_envs, 1
-        )
+        # Rotations: [N, 4] + [N, 4] + [N, 4] -> [3N, 4]
+        all_rots = torch.cat([identity_quat, root_quat, goal_arrow_quat], dim=0)
 
-        # Stack arrow rotations: [Current Heading, Desired Heading]
-        arrow_rots = torch.cat([root_quat, goal_arrow_quat], dim=0)
-
-        # Combine all rotations: [Spheres, Cyan Arrows, Red Arrows]
-        all_rots = torch.cat([identity_quat, arrow_rots], dim=0)
-
-        # --- 4. Visualize ---
-        # Use pre-calculated indices [0...0, 1...1, 2...2]
+        # 5. Render
+        # Use the pre-calculated marker_indices [0...0, 1...1, 2...2]
         self.visualization_markers.visualize(
             all_locs, all_rots, marker_indices=self.marker_indices
         )

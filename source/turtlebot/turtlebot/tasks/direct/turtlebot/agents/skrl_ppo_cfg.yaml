@@ -55,15 +55,15 @@ agent:
   value_preprocessor_kwargs: null
   random_timesteps: 0
   learning_starts: 0
-  grad_norm_clip: 1.0
+  grad_norm_clip: 0.5
   ratio_clip: 0.2
   value_clip: 0.2
-  clip_predicted_values: True
-  entropy_loss_scale: 0.01
+  clip_predicted_values: False
+  entropy_loss_scale: 0.001
   value_loss_scale: 0.5
   kl_threshold: 0.01
   rewards_shaper_scale: 0.1
-  time_limit_bootstrap: False
+  time_limit_bootstrap: True
   # logging and checkpoint
   experiment:
     directory: "turtlebot"
