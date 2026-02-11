@@ -4,7 +4,7 @@ seed: 42
 # Models are instantiated using skrl's model instantiator utility
 # https://skrl.readthedocs.io/en/latest/api/utils/model_instantiators.html
 models:
-  separate: False
+  separate: True
   policy:  # see gaussian_model parameters
     class: GaussianMixin
     clip_actions: False
@@ -15,8 +15,8 @@ models:
     network:
       - name: net
         input: OBSERVATIONS
-        layers: [32, 32]
-        activations: elu
+        layers: [64, 64]
+        activations: tanh
     output: ACTIONS
   value:  # see deterministic_model parameters
     class: DeterministicMixin
@@ -24,8 +24,8 @@ models:
     network:
       - name: net
         input: OBSERVATIONS
-        layers: [32, 32]
-        activations: elu
+        layers: [128, 128]
+        activations: tanh
     output: ONE
 
 
@@ -40,15 +40,15 @@ memory:
 # https://skrl.readthedocs.io/en/latest/api/agents/ppo.html
 agent:
   class: PPO
-  rollouts: 32
+  rollouts: 1024
   learning_epochs: 8
   mini_batches: 8
   discount_factor: 0.99
   lambda: 0.95
-  learning_rate: 5.0e-04
-  learning_rate_scheduler: KLAdaptiveLR
+  learning_rate: 1.0e-04
+  learning_rate_scheduler: None
   learning_rate_scheduler_kwargs:
-    kl_threshold: 0.008
+    gamma: 0.99
   state_preprocessor: RunningStandardScaler
   state_preprocessor_kwargs: null
   value_preprocessor: RunningStandardScaler
@@ -59,15 +59,15 @@ agent:
   ratio_clip: 0.2
   value_clip: 0.2
   clip_predicted_values: True
-  entropy_loss_scale: 0.0
-  value_loss_scale: 2.0
-  kl_threshold: 0.0
+  entropy_loss_scale: 0.01
+  value_loss_scale: 0.5
+  kl_threshold: 0.01
   rewards_shaper_scale: 0.1
   time_limit_bootstrap: False
   # logging and checkpoint
   experiment:
-    directory: "cartpole_direct"
-    experiment_name: ""
+    directory: "turtlebot"
+    experiment_name: "ppo"
     write_interval: auto
     checkpoint_interval: auto
 
@@ -76,5 +76,5 @@ agent:
 # https://skrl.readthedocs.io/en/latest/api/trainers/sequential.html
 trainer:
   class: SequentialTrainer
-  timesteps: 4800
+  timesteps: 500000
   environment_info: log

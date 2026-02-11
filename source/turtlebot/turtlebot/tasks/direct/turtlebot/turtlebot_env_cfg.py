@@ -3,7 +3,73 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-from isaaclab_assets.robots.cartpole import CARTPOLE_CFG
+
+import isaaclab.sim as sim_utils
+from isaaclab.actuators import ImplicitActuatorCfg
+from isaaclab.assets import ArticulationCfg
+from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
+
+import os
+
+# get dir of this file
+
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+TURTLEBOT_CFG = ArticulationCfg(
+    spawn=sim_utils.UsdFileCfg(
+        # usd_path=f"{ISAACLAB_NUCLEUS_DIR}/Robots/Classic/Cartpole/cartpole.usd",
+        usd_path=f"{CURRENT_DIR}/turtlebot.usd",
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            # Master switch to enable physics for this body
+            rigid_body_enabled=True,
+            # High safety cap for linear speed to prevent simulation crashes from extreme forces
+            max_linear_velocity=1000.0,
+            # High safety cap for rotation speed; helps keep simulation stable during collisions
+            max_angular_velocity=1000.0,
+            # Velocity limit for "popping" objects apart when they overlap; 100.0 is quite aggressive
+            max_depenetration_velocity=100.0,
+            # Accounts for the effect of rotating masses (important for your Turtlebot's spinning wheels)
+            enable_gyroscopic_forces=True,
+        ),
+        # articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+        #     # Prevents parts of the same robot (like wheels and chassis) from colliding with each other
+        #     enabled_self_collisions=False,
+        #     # Number of position constraint solver passes; 4 is standard for stability
+        #     solver_position_iteration_count=4,
+        #     # WARNING: 0 may cause zero-friction/sliding behavior; set to at least 1 for velocity control
+        #     solver_velocity_iteration_count=1,
+        #     # Velocity below which the articulation goes to "sleep" to save CPU; 0.0 disables sleeping
+        #     sleep_threshold=0.005,
+        #     # Threshold for the solver to stop calculating movement for a steady body
+        #     stabilization_threshold=0.001,
+        # ),
+    ),
+    # init_state=ArticulationCfg.InitialStateCfg(
+    #     pos=(0.0, 0.0, 2.0),
+    #     joint_pos={
+    #         "a__namespace_wheel_left_joint": 0.0,
+    #         "a__namespace_wheel_right_joint": 0.0,
+    #     },
+    # ),
+    actuators={
+        "left_wheel": ImplicitActuatorCfg(
+            joint_names_expr=["a__namespace_wheel_left_joint"],
+            effort_limit_sim=400.0,
+            stiffness=0.0,
+            damping=10.0,
+        ),
+        "right_wheel": ImplicitActuatorCfg(
+            joint_names_expr=["a__namespace_wheel_right_joint"],
+            effort_limit_sim=400.0,
+            stiffness=0.0,
+            damping=10.0,
+        ),
+    },
+)
+"""Configuration for a simple Turtlebot robot."""
+
+
+# from isaaclab_assets.robots.cartpole import CARTPOLE_CFG
 
 from isaaclab.assets import ArticulationCfg
 from isaaclab.envs import DirectRLEnvCfg
@@ -18,31 +84,47 @@ class TurtlebotEnvCfg(DirectRLEnvCfg):
     decimation = 2
     episode_length_s = 5.0
     # - spaces definition
-    action_space = 1
-    observation_space = 4
+    action_space = 2
+    observation_space = 5
     state_space = 0
 
+    maze_layout = [
+        [1, 1, 1, 1, 1],
+        [1, 0, 0, "g", 1],
+        [1, 0, 0, 0, 1],
+        [1, "r", 0, 0, 1],
+        [1, 1, 1, 1, 1],
+    ]
+    max_length = max(len(row) for row in maze_layout)
+
     # simulation
-    sim: SimulationCfg = SimulationCfg(dt=1 / 120, render_interval=decimation)
+    sim: SimulationCfg = SimulationCfg(dt=1 / 50, render_interval=decimation)
 
     # robot(s)
-    robot_cfg: ArticulationCfg = CARTPOLE_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    robot_cfg: ArticulationCfg = TURTLEBOT_CFG.replace(
+        prim_path="/World/envs/env_.*/turtlebot3_burger"
+    )
 
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=4.0, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(
+        num_envs=1024, env_spacing=max_length, replicate_physics=True
+    )
 
     # custom parameters/scales
     # - controllable joint
-    cart_dof_name = "slider_to_cart"
-    pole_dof_name = "cart_to_pole"
+    left_wheel_dof_name = "a__namespace_wheel_left_joint"
+    right_wheel_dof_name = "a__namespace_wheel_right_joint"
     # - action scale
-    action_scale = 100.0  # [N]
+    action_scale = 1.0  # Torque [N*m]
     # - reward scales
-    rew_scale_alive = 1.0
-    rew_scale_terminated = -2.0
-    rew_scale_pole_pos = -1.0
-    rew_scale_cart_vel = -0.01
-    rew_scale_pole_vel = -0.005
+    rew_scale_alive = 10.0
+    # rew_scale_terminated = -2.0
+    # rew_scale_tail_pos = -1.0
+    # rew_scale_pole_pos = -1.0
+    # rew_scale_tail_vel = -0.005
+    # rew_scale_pole_vel = -0.005
+    # rew_scale_cart_vel = -0.01
+
     # - reset states/conditions
-    initial_pole_angle_range = [-0.25, 0.25]  # pole angle sample range on reset [rad]
-    max_cart_pos = 3.0  # reset if cart exceeds this position [m]
+    # initial_pole_angle_range = [-0.25, 0.25]  # pole angle sample range on reset [rad]
+    # max_cart_pos = 3.0  # reset if cart exceeds this position [m]
