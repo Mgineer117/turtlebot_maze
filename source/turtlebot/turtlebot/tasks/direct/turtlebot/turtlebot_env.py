@@ -131,7 +131,7 @@ class TurtlebotEnv(DirectRLEnv):
 
     def _spawn_wall(self, prim_path, translation, scale):
         wall_cfg = sim_utils.CuboidCfg(
-            size=(1.0, 1.0, 1.0),
+            size=(1.0, 1.0, 0.5),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.4, 0.4, 0.4)),
             physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=0.5),
             collision_props=sim_utils.CollisionPropertiesCfg(),
@@ -205,34 +205,63 @@ class TurtlebotEnv(DirectRLEnv):
         return {"policy": obs}
 
     def _get_rewards(self) -> torch.Tensor:
-        # 1. Distance Penalty: Always non-positive
+        # 1. Distance to goal
         dist_error = torch.norm(self.goals - self.robot.data.root_pos_w[:, :2], dim=-1)
+        rew_dist = self.cfg.rew_scale_distance * dist_error
 
-        # 2. Backward Movement Penalty: Always non-positive
-        v_lin = self.actions[:, 1]
-        rew_backwards = torch.where(
-            v_lin < 0, torch.square(v_lin), torch.zeros_like(v_lin)
+        # 2. Backward Movement Penalty
+        v_lin_cmd = self.actions[:, 1]
+        rew_backwards = self.cfg.rew_scale_backward * torch.where(
+            v_lin_cmd < 0, torch.square(v_lin_cmd), torch.zeros_like(v_lin_cmd)
         )
 
-        # 3. Death Penalty: Applied only when a terminal condition (flip/collision) is met
-        # self.reset_terminated is True (1.0) when the robot flips or crashes
-        # We apply a large negative constant (e.g., -10.0) upon "death"
+        # 3. Success Reward
+        reached = (dist_error < 0.2).float()
+        rew_success = self.cfg.rew_scale_reached * reached
+
+        # 4. SLIP PENALTY
+        # Get actual linear velocity of the robot from the simulation (root velocity)
+        # Velocity is in world frame, so we take the magnitude of [vx, vy]
+        actual_v_lin = torch.norm(self.robot.data.root_lin_vel_w[:, :2], dim=-1)
+
+        # Get joint velocities (rad/s) for both wheels
+        # Indices were defined in __init__ as [left, right]
+        wheel_velocities = self.robot.data.joint_vel[:, self._wheel_dof_indices]
+        v_left = wheel_velocities[:, 0] * self.wheel_radius
+        v_right = wheel_velocities[:, 1] * self.wheel_radius
+
+        # Theoretical linear velocity: v = (v_right + v_left) / 2
+        kinematic_v_lin = (v_left + v_right) / 2.0
+
+        # Slip is the difference between what the wheels do and what the body does
+        slip_error = torch.square(kinematic_v_lin - actual_v_lin)
+        rew_slip = self.cfg.rew_scale_slip * slip_error
+
+        # 5. Death Penalty
         death_penalty = self.cfg.rew_scale_terminated * self.reset_terminated.float()
 
-        # Total reward is now strictly in (-inf, 0]
-        return (
-            self.cfg.rew_scale_distance * dist_error
-            + self.cfg.rew_scale_backward * rew_backwards
-            + death_penalty
-        )
+        return rew_dist + rew_backwards + rew_success + rew_slip + death_penalty
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
+        # Time out
         time_out = self.episode_length_buf >= self.max_episode_length - 1
+
+        # Physics failure (flipped)
         flipped = torch.any(
             torch.abs(quat_to_euler_rpy(self.robot.data.root_quat_w)[:, :2]) > 1.5,
             dim=-1,
         )
-        return flipped, time_out
+
+        # NEW: Goal Reach Termination
+        dist_to_goal = torch.norm(
+            self.goals - self.robot.data.root_pos_w[:, :2], dim=-1
+        )
+        reached_goal = dist_to_goal < 0.2  # 20cm threshold
+
+        # Combine failures and success for 'terminated'
+        terminated = flipped | reached_goal
+
+        return terminated, time_out
 
     def _reset_idx(self, env_ids: Sequence[int] | None):
         if env_ids is None:
