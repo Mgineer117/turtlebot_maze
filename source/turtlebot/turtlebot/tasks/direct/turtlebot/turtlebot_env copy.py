@@ -82,83 +82,12 @@ class TurtlebotEnv(DirectRLEnv):
         self.wheel_base = 0.160
 
         # Pre-calculate local coordinates for 'r' and 'g'
-        self.start_pos_local = self._get_cell_coords("r")
-        self.goal_pos_local = self._get_cell_coords("g")
-
-    def _get_cell_coords(self, char: str) -> torch.Tensor:
-        """Find center coordinates of a specific character in the maze layout."""
-        for i, row in enumerate(self.cfg.maze_layout):
-            for j, cell in enumerate(row):
-                if cell == char:
-                    x = i - len(self.cfg.maze_layout) // 2
-                    y = j - len(row) // 2
-                    return torch.tensor([x, y], device=self.device, dtype=torch.float)
-        return torch.tensor([0.0, 0.0], device=self.device)
-
-    def _spawn_hazard_mesh(self, prim_path, translation, scale):
-        hazard_cfg = sim_utils.UsdFileCfg(
-            usd_path=f"{CURRENT_DIR}/hazard.usd",
-            # Ensures gravity acts on the object so it doesn't float
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                disable_gravity=False,
-                retain_accelerations=False,
-                linear_damping=0.0,
-                angular_damping=0.0,
-            ),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
-            mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
-            # Overrides the material to make it red
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.1, 0.1)),
+        self.start_pos_local = torch.tensor(
+            self.cfg.start_pos_local, device=self.device, dtype=torch.float
         )
-
-        # Apply the spawn function with the new scale
-        hazard_cfg.func(prim_path, hazard_cfg, translation=translation, scale=scale)
-
-    def _spawn_cone(self, prim_path, translation, scale):
-        cone_cfg = sim_utils.ConeCfg(
-            radius=0.5,
-            height=1.0,
-            visual_material=sim_utils.PreviewSurfaceCfg(
-                diffuse_color=(0.4, 0.4, 0.4)
-            ),  # Red hazard color
-            physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=0.5),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
+        self.goal_pos_local = torch.tensor(
+            self.cfg.goal_pos_local, device=self.device, dtype=torch.float
         )
-        cone_cfg.func(prim_path, cone_cfg, translation=translation, scale=scale)
-
-    def _spawn_wall(self, prim_path, translation, scale):
-        wall_cfg = sim_utils.CuboidCfg(
-            size=(1.0, 1.0, 1.0),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.4, 0.4, 0.4)),
-            physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=0.5),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
-        )
-        wall_cfg.func(prim_path, wall_cfg, translation=translation, scale=scale)
-
-    def _setup_map(self):
-        """Spawn walls based on the maze layout."""
-        for i, row in enumerate(self.cfg.maze_layout):
-            for j, cell in enumerate(row):
-                x_pos = i - len(self.cfg.maze_layout) // 2
-                y_pos = j - len(row) // 2
-                if cell == 1:
-                    self._spawn_wall(
-                        f"/World/envs/env_.*/Wall_{i}_{j}",
-                        (x_pos, y_pos, 0.5),
-                        (1.0, 1.0, 1.0),
-                    )
-                elif cell == "c":
-                    self._spawn_cone(
-                        f"/World/envs/env_.*/Cone_{i}_{j}",
-                        (x_pos, y_pos, 0.5),
-                        (0.5, 0.5, 1.0),
-                    )
-                elif cell == "h":
-                    self._spawn_hazard_mesh(
-                        f"/World/envs/env_.*/Hazard_{i}_{j}",
-                        (x_pos, y_pos, 0.0),
-                        (0.3, 0.3, 0.3),
-                    )
 
     def _setup_scene(self):
         # 1. Instantiate the Robot and Terrain
@@ -166,7 +95,10 @@ class TurtlebotEnv(DirectRLEnv):
         self.terrain = TerrainImporter(self.cfg.terrain)
 
         # 2. Spawn the Maze
-        self._setup_map()
+        sim_utils.spawn_from_usd(
+            self.cfg.maze_cfg.prim_path,
+            cfg=self.cfg.maze_cfg.spawn,
+        )
 
         # 3. Instantiate the Lidar
         self.lidar = MultiMeshRayCaster(self.cfg.lidar_cfg)
