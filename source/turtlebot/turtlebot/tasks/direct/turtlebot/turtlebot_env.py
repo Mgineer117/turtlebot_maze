@@ -99,14 +99,14 @@ class TurtlebotEnv(DirectRLEnv):
         hazard_cfg = sim_utils.UsdFileCfg(
             usd_path=f"{CURRENT_DIR}/hazard.usd",
             # Ensures gravity acts on the object so it doesn't float
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                disable_gravity=False,
-                retain_accelerations=False,
-                linear_damping=0.0,
-                angular_damping=0.0,
-            ),
+            # rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            #     disable_gravity=False,
+            #     retain_accelerations=False,
+            #     linear_damping=0.0,
+            #     angular_damping=0.0,
+            # ),
             collision_props=sim_utils.CollisionPropertiesCfg(),
-            mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
+            # mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
             # Overrides the material to make it red
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.1, 0.1)),
         )
@@ -116,7 +116,7 @@ class TurtlebotEnv(DirectRLEnv):
 
     def _spawn_cone(self, prim_path, translation, scale):
         cone_cfg = sim_utils.ConeCfg(
-            radius=0.5,
+            radius=0.35,
             height=1.0,
             visual_material=sim_utils.PreviewSurfaceCfg(
                 diffuse_color=(0.4, 0.4, 0.4)
@@ -273,29 +273,27 @@ class TurtlebotEnv(DirectRLEnv):
         return {"policy": obs}
 
     def _get_rewards(self) -> torch.Tensor:
-        # 1. Distance to goal
+        # 1. Distance to goal \in [0, 1]
         dist_error = torch.norm(self.goals - self.robot.data.root_pos_w[:, :2], dim=-1)
-        rew_dist = self.cfg.rew_scale_distance * dist_error
+        rew_dist = self.cfg.rew_scale_distance * (1 / (1 + dist_error))
 
-        # 2. Backward Movement Penalty
-        v_lin_cmd = self.actions[:, 1]
-        rew_backwards = self.cfg.rew_scale_backward * torch.where(
-            v_lin_cmd < 0, torch.square(v_lin_cmd), torch.zeros_like(v_lin_cmd)
-        )
+        # 2. Backward Movement Penalty \in [0, 1]
+        v_backward_lin_cmd = torch.relu(-self.actions[:, 1]) ** 2
+        rew_backwards = self.cfg.rew_scale_backward * (1 / (1 + v_backward_lin_cmd))
 
-        # 3. Success Reward
+        # 3. Success Reward \in [0, 1]
         reached = (dist_error < 0.2).float()
         rew_success = self.cfg.rew_scale_reached * reached
 
-        # 4. Slip penalty
+        # 4. Slip penalty \in [0, 1]
         actual_v_lin = torch.norm(self.robot.data.root_lin_vel_w[:, :2], dim=-1)
         wheel_velocities = self.robot.data.joint_vel[:, self._wheel_dof_indices]
         v_left = wheel_velocities[:, 0] * self.wheel_radius
         v_right = wheel_velocities[:, 1] * self.wheel_radius
         kinematic_v_lin = (v_left + v_right) / 2.0
 
-        slip_error = torch.square(kinematic_v_lin - actual_v_lin)
-        rew_slip = self.cfg.rew_scale_slip * slip_error
+        slip_error = (kinematic_v_lin - actual_v_lin) ** 2
+        rew_slip = self.cfg.rew_scale_slip * (1 / (1 + slip_error))
 
         # 5. Differentiable collision penalty
         # Calculate distances from the robot root to all lidar hit points
@@ -311,20 +309,20 @@ class TurtlebotEnv(DirectRLEnv):
         # Threshold is the safety boundary (e.g., 0.25m)
         # If min_dist >= threshold, penalty is 0.
         # If min_dist < threshold, penalty increases quadratically.
-        # threshold = 0.25
+        # threshold = 0.10
         # collision_error = torch.clamp(threshold - min_dist, min=0.0)
-        rew_collision = self.cfg.rew_scale_collision * torch.square(min_dist)
+        rew_collision = self.cfg.rew_scale_collision * (1 / (1 + min_dist))
 
         # 6. Death Penalty
         death_penalty = self.cfg.rew_scale_terminated * self.reset_terminated.float()
 
         return (
             rew_dist
-            + rew_backwards
-            + rew_success
-            + rew_slip
+            # + rew_backwards
+            # + rew_success
+            # + rew_slip
             + rew_collision
-            + death_penalty
+            # + death_penalty
         )
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:

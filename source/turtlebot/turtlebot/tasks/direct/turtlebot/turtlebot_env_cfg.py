@@ -79,10 +79,10 @@ TURTLEBOT_CFG = ArticulationCfg(
 class TurtlebotEnvCfg(DirectRLEnvCfg):
     # env
     decimation = 2
-    episode_length_s = 30.0
+    episode_length_s = 60.0
     # - spaces definition
     action_space = 2
-    observation_space = 17
+    observation_space = 41
     state_space = 0
 
     # simulation
@@ -136,7 +136,7 @@ class TurtlebotEnvCfg(DirectRLEnvCfg):
             channels=1,
             vertical_fov_range=(0.0, 0.0),
             horizontal_fov_range=(0.0, 360.0),
-            horizontal_res=30.0,
+            horizontal_res=10.0,
         ),
     )
 
@@ -173,12 +173,13 @@ class TurtlebotEnvCfg(DirectRLEnvCfg):
     action_scale = 1.0  # Torque [N*m]
     # - reward scales
     # rew_scale_alive = 10.0
-    rew_scale_terminated = -10.0
-    rew_scale_backward = -1.0
-    rew_scale_distance = -3.0  # 0.0 for sparse-reward setting
+    rew_scale_distance = 1.0  # 0.0 for sparse-reward setting
+    rew_scale_backward = 0.25
     rew_scale_reached = 10.0
-    rew_scale_slip = -1.0
-    rew_scale_collision = 1.0
+    rew_scale_slip = 0.25
+    rew_scale_collision = 0.1
+    rew_scale_terminated = -10.0
+
     # - reset states/conditions
     # initial_pole_angle_range = [-0.25, 0.25]  # pole angle sample range on reset [rad]
     # max_cart_pos = 3.0  # reset if cart exceeds this position [m]
